@@ -11,16 +11,38 @@
 
 import argparse
 import configparser
+import importlib
+import logging
 import os
+import sys
+import tempfile
+
+logger = logging.getLogger('dbdust')
+formatter = logging.Formatter(fmt="%(levelname)s - %(message)s")
+handler = logging.StreamHandler()
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
 
 
 def validate_config_file(config_file):
+    """ Validate that a file exists
+
+    :raise: :class:`argparse.ArgumentTypeError` if file not found
+    :return: the file path
+    :rtype: str
+    """
     if not os.path.isfile(config_file):
         raise argparse.ArgumentTypeError('Invalid config file {}'.format(config_file))
     return config_file
 
 
 def create_cmd_line_parser():
+    """ Create the command line parser for cli
+
+    :return: a parser object
+    :rtype: :class:`argparse.ArgumentParser`
+    """
     parser = argparse.ArgumentParser(description='trigger the backup of the database, store the '
                                                  'backup and clean old ones')
     parser.add_argument('-c', '--config', type=validate_config_file, dest='config_file',
@@ -75,4 +97,29 @@ def run(*args, **kwargs):
     """
     args = create_cmd_line_parser().parse_args()
     conf = DbDustConfig(args.config_file)
-    print('dbdust running ...', args)
+    exit_code = 0
+
+    try:
+        tmp_dir = conf.get('general', 'tmp_dir', fallback=tempfile.gettempdir())
+        dump_type = conf.get('general', 'database')
+        dump_module = importlib.import_module('dbdust.database.{}'.format(dump_type))
+        dump_handler = getattr(dump_module, '{}Handler'.format(dump_type.capitalize()))()
+
+        with tempfile.TemporaryDirectory(None, 'dbdust-', tmp_dir) as tmpdirname:
+            print(tmpdirname)
+            with dump_handler:
+                dump_handler.dump()
+
+    except ImportError as e:
+        print(str(e))
+        logger.error("No handler to export database {}".format(dump_type))
+        exit_code = 2
+    except configparser.Error as e:
+        logger.error("configuration error : {}".format(str(e)))
+        exit_code = 2
+    except Exception as e:
+        print(type(e))
+        logger.error(str(e))
+        exit_code = 1
+
+    sys.exit(exit_code)
