@@ -10,6 +10,9 @@
 """ Entry point of the dbdust application """
 
 import argparse
+import datetime
+import shutil
+
 import configparser
 import importlib
 import logging
@@ -17,8 +20,10 @@ import os
 import sys
 import tempfile
 
+import dbdust.dumper
+
 logger = logging.getLogger('dbdust')
-formatter = logging.Formatter(fmt="%(levelname)s - %(message)s")
+formatter = logging.Formatter(fmt="%(asctime)s - %(levelname)s - %(message)s")
 handler = logging.StreamHandler()
 handler.setFormatter(formatter)
 logger.addHandler(handler)
@@ -98,17 +103,30 @@ def run(*args, **kwargs):
     args = create_cmd_line_parser().parse_args()
     conf = DbDustConfig(args.config_file)
     exit_code = 0
+    now = datetime.datetime.utcnow()
+
+    logger.info('start')
 
     try:
-        tmp_dir = conf.get('general', 'tmp_dir', fallback=tempfile.gettempdir())
         dump_type = conf.get('general', 'database')
-        dump_module = importlib.import_module('dbdust.database.{}'.format(dump_type))
-        dump_handler = getattr(dump_module, '{}Handler'.format(dump_type.capitalize()))()
+        if dump_type not in dbdust.dumper.dumper_config:
+            raise Exception('{} database not supported')
 
-        with tempfile.TemporaryDirectory(None, 'dbdust-', tmp_dir) as tmpdirname:
-            print(tmpdirname)
-            with dump_handler:
-                dump_handler.dump()
+        dumper_config = dbdust.dumper.dumper_config.get(dump_type)
+        dumper_bin_name = dumper_config.get('bin_name')
+        dumper_file_ext = dumper_config.get('file_ext')
+
+        dump_bin_path = shutil.which(dumper_bin_name)
+        if dump_bin_path is None:
+            raise Exception('{} not found on the system'.format(dumper_bin_name))
+        logger.debug('{} found at {}'.format(dumper_bin_name, dump_bin_path))
+
+        tmp_dir = conf.get('general', 'tmp_dir', fallback=tempfile.gettempdir())
+        file_name = "{}{}".format(conf.get('general', 'file_prefix', fallback="backup-"), now.strftime("%Y%m%d%H%M%S"))
+
+        with tempfile.TemporaryDirectory(None, 'dbdust-', tmp_dir) as tmpdir_name:
+            tmp_file = os.path.join(tmpdir_name, "{}.{}".format(file_name, dumper_file_ext))
+            logger.debug('backup will be temporary stored at {}'.format(tmp_file))
 
     except ImportError as e:
         print(str(e))
@@ -121,5 +139,7 @@ def run(*args, **kwargs):
         print(type(e))
         logger.error(str(e))
         exit_code = 1
+
+    logger.info('end')
 
     sys.exit(exit_code)
