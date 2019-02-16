@@ -12,6 +12,7 @@
 import argparse
 import datetime
 import shutil
+import subprocess
 
 import configparser
 import importlib
@@ -110,23 +111,40 @@ def run(*args, **kwargs):
     try:
         dump_type = conf.get('general', 'database')
         if dump_type not in dbdust.dumper.dumper_config:
-            raise Exception('{} database not supported')
+            raise Exception('{} database not supported'.format(dump_type))
+
+        dump_conf = dict(conf.items(dump_type))
 
         dumper_config = dbdust.dumper.dumper_config.get(dump_type)
         dumper_bin_name = dumper_config.get('bin_name')
         dumper_file_ext = dumper_config.get('file_ext')
+        dumper_cli_func = dumper_config.get('cli_builder')
 
         dump_bin_path = shutil.which(dumper_bin_name)
+        if dump_bin_path is None:
+            current_dir_bin_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'bin', dumper_bin_name)
+            dump_bin_path = current_dir_bin_path if os.path.exists(current_dir_bin_path) else None
         if dump_bin_path is None:
             raise Exception('{} not found on the system'.format(dumper_bin_name))
         logger.debug('{} found at {}'.format(dumper_bin_name, dump_bin_path))
 
         tmp_dir = conf.get('general', 'tmp_dir', fallback=tempfile.gettempdir())
-        file_name = "{}{}".format(conf.get('general', 'file_prefix', fallback="backup-"), now.strftime("%Y%m%d%H%M%S"))
+        file_prefix = conf.get('general', 'file_prefix', fallback="backup-")
+        file_name = "{}{}".format(file_prefix, now.strftime("%Y%m%d%H%M%S"))
 
         with tempfile.TemporaryDirectory(None, 'dbdust-', tmp_dir) as tmpdir_name:
             tmp_file = os.path.join(tmpdir_name, "{}.{}".format(file_name, dumper_file_ext))
             logger.debug('backup will be temporary stored at {}'.format(tmp_file))
+
+            dump_cli = dumper_cli_func(dump_bin_path, tmp_file, **dump_conf)
+            logger.debug('command : {}'.format(' '.join(dump_cli)))
+
+            dump_result = subprocess.run(dump_cli, stdin=sys.stdin, stdout=sys.stdout)
+            if dump_result.returncode != 0:
+                raise Exception('dump command exited with error code {}'.format(dump_result.returncode))
+
+            logger.debug('dump command executed successfully')
+            logger.debug('dump file size is {} Bytes'.format(os.path.getsize(tmp_file)))
 
     except ImportError as e:
         print(str(e))
