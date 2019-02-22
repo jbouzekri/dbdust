@@ -48,7 +48,7 @@ def test_dbdustconfig_from_file_no_env(tmpdir):
     my_var1=value1
     my_var2=value2
     my_var3=value3
-    
+
     [source]
     other_var1=test1
     other_var2=test2

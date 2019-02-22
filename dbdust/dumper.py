@@ -1,3 +1,12 @@
+# -*- coding: utf-8 -*-
+#
+# (c) 2019 3sLab
+#
+# This file is part of the dbdust application
+#
+# MIT License :
+# https://raw.githubusercontent.com/3slab/dbdust/master/LICENSE
+
 def mongo_cli_builder(bin_path, dump_path, uri=None, password=None):
     pass
 
@@ -18,4 +27,3 @@ dumper_config = {
         "cli_builder": mongo_cli_builder
     }
 }
-

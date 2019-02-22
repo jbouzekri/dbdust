@@ -10,18 +10,17 @@
 """ Entry point of the dbdust application """
 
 import argparse
-import datetime
-import shutil
-import subprocess
-
 import configparser
-import importlib
+import datetime
 import logging
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 
 import dbdust.dumper
+import dbdust.storage
 
 logger = logging.getLogger('dbdust')
 formatter = logging.Formatter(fmt="%(asctime)s - %(levelname)s - %(message)s")
@@ -115,6 +114,15 @@ def run(*args, **kwargs):
 
         dump_conf = dict(conf.items(dump_type))
 
+        storage_type = conf.get('general', 'storage')
+        if storage_type not in dbdust.storage.StorageFactory.storage_list:
+            raise Exception('{} storage not supported'.format(storage_type))
+
+        storage_conf = dict(conf.items(storage_type))
+
+        storage_impl = dbdust.storage.StorageFactory.create(logger, storage_type, **storage_conf)
+        storage_handler = dbdust.storage.StorageHandler(storage_impl)
+
         dumper_config = dbdust.dumper.dumper_config.get(dump_type)
         dumper_bin_name = dumper_config.get('bin_name')
         dumper_file_ext = dumper_config.get('file_ext')
@@ -130,10 +138,10 @@ def run(*args, **kwargs):
 
         tmp_dir = conf.get('general', 'tmp_dir', fallback=tempfile.gettempdir())
         file_prefix = conf.get('general', 'file_prefix', fallback="backup-")
-        file_name = "{}{}".format(file_prefix, now.strftime("%Y%m%d%H%M%S"))
+        file_name = "{}{}.{}".format(file_prefix, now.strftime("%Y%m%d%H%M%S"), dumper_file_ext)
 
         with tempfile.TemporaryDirectory(None, 'dbdust-', tmp_dir) as tmpdir_name:
-            tmp_file = os.path.join(tmpdir_name, "{}.{}".format(file_name, dumper_file_ext))
+            tmp_file = os.path.join(tmpdir_name, file_name)
             logger.debug('backup will be temporary stored at {}'.format(tmp_file))
 
             dump_cli = dumper_cli_func(dump_bin_path, tmp_file, **dump_conf)
@@ -146,6 +154,14 @@ def run(*args, **kwargs):
             logger.debug('dump command executed successfully')
             logger.debug('dump file size is {} Bytes'.format(os.path.getsize(tmp_file)))
 
+            storage_handler.save(tmp_file)
+            print(tmp_file)
+            # 1. Upload file
+            # 2. if error, exit
+            # 3. List remote files
+            # 4. get all file dates and aggregate per day
+            # 5. Days with more than one file marked for removal
+            # 2. get all file dates
     except ImportError as e:
         print(str(e))
         logger.error("No handler to export database {}".format(dump_type))
