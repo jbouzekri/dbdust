@@ -10,6 +10,8 @@
 """ Entry point of the dbdust application """
 
 import argparse
+import traceback
+
 import configparser
 import datetime
 import logging
@@ -118,10 +120,18 @@ def run(*args, **kwargs):
         if storage_type not in dbdust.storage.StorageFactory.storage_list:
             raise Exception('{} storage not supported'.format(storage_type))
 
+        tmp_dir = conf.get('general', 'tmp_dir', fallback=tempfile.gettempdir())
+        file_prefix = conf.get('general', 'file_prefix', fallback="backup-")
+        date_format = conf.get('general', 'date_format', fallback="%Y%m%d%H%M%S")
+        daily_retain = int(conf.get('general', 'daily', fallback=7))
+        weekly_retain = int(conf.get('general', 'weekly', fallback=4))
+        monthly_retain = int(conf.get('general', 'monthly', fallback=2))
+        max_per_day = int(conf.get('general', 'max', fallback=1))
         storage_conf = dict(conf.items(storage_type))
 
         storage_impl = dbdust.storage.StorageFactory.create(logger, storage_type, **storage_conf)
-        storage_handler = dbdust.storage.StorageHandler(storage_impl)
+        storage_handler = dbdust.storage.StorageHandler(storage_impl, file_prefix, date_format, daily_retain,
+                                                        weekly_retain, monthly_retain, max_per_day)
 
         dumper_config = dbdust.dumper.dumper_config.get(dump_type)
         dumper_bin_name = dumper_config.get('bin_name')
@@ -136,9 +146,7 @@ def run(*args, **kwargs):
             raise Exception('{} not found on the system'.format(dumper_bin_name))
         logger.debug('{} found at {}'.format(dumper_bin_name, dump_bin_path))
 
-        tmp_dir = conf.get('general', 'tmp_dir', fallback=tempfile.gettempdir())
-        file_prefix = conf.get('general', 'file_prefix', fallback="backup-")
-        file_name = "{}{}.{}".format(file_prefix, now.strftime("%Y%m%d%H%M%S"), dumper_file_ext)
+        file_name = "{}{}.{}".format(file_prefix, now.strftime(date_format), dumper_file_ext)
 
         with tempfile.TemporaryDirectory(None, 'dbdust-', tmp_dir) as tmpdir_name:
             tmp_file = os.path.join(tmpdir_name, file_name)
@@ -155,13 +163,7 @@ def run(*args, **kwargs):
             logger.debug('dump file size is {} Bytes'.format(os.path.getsize(tmp_file)))
 
             storage_handler.save(tmp_file)
-            print(tmp_file)
-            # 1. Upload file
-            # 2. if error, exit
-            # 3. List remote files
-            # 4. get all file dates and aggregate per day
-            # 5. Days with more than one file marked for removal
-            # 2. get all file dates
+            storage_handler.rotate()
     except ImportError as e:
         print(str(e))
         logger.error("No handler to export database {}".format(dump_type))
@@ -172,6 +174,7 @@ def run(*args, **kwargs):
     except Exception as e:
         print(type(e))
         logger.error(str(e))
+        traceback.print_exc()
         exit_code = 1
 
     logger.info('end')
