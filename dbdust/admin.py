@@ -256,9 +256,6 @@ def run(*args, **kwargs):
         backup_handler = DbDustBackupHandler(logger, dump_conf, storage_conf)
         backup_handler.process(tmp_dir)
 
-    except ImportError as e:
-        logger.error("No handler to export database {}".format(dump_type))
-        exit_code = 2
     except configparser.Error as e:
         logger.error("configuration error : {}".format(str(e)))
         exit_code = 2

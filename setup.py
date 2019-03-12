@@ -13,15 +13,24 @@ setup(
     description="Backup database, store and clean archive",
     license="MIT",
     keywords="database, backup, mysql, mongo, influx, elasticsearch",
-    url="http://github.com/3slab/dbdust",
+    url="https://github.com/3slab/dbdust",
     packages=find_packages(exclude=["*.test", "*.test.*", "test.*", "test"]),
     long_description=read('README.md'),
-    requires=['azure-storage-blob'],
+    install_requires=('azure-storage-blob',),
     extras_require={
         'test': ['pytest', 'flake8', 'mock']
     },
     classifiers=[
-        # TODO
+        'Development Status :: 5 - Production/Stable',
+        'Environment :: Console',
+        'Intended Audience :: System Administrators',
+        'License :: OSI Approved :: MIT License',
+        'Operating System :: POSIX :: Linux',
+        'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+        'Topic :: System :: Archiving :: Backup'
     ],
     entry_points='''
         [console_scripts]
