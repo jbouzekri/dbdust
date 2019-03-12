@@ -11,7 +11,7 @@
 
 import argparse
 import traceback
-
+import collections
 import configparser
 import datetime
 import logging
@@ -68,7 +68,8 @@ class DbDustConfig(configparser.ConfigParser):
         if configfile_path:
             self.read(configfile_path)
 
-    def _get_default_from_env(self):
+    @staticmethod
+    def _get_default_from_env():
         """ Create a 2 levels dict from environment variables starting with `DBDUST___`
         Used to setup default value in parser
 
@@ -97,6 +98,136 @@ class DbDustConfig(configparser.ConfigParser):
         return {s: dict(self.items(s)) for s in self.sections()}
 
 
+def get_dump_config(dump_type, dbdust_conf):
+    """ Get all settings for the dump operation
+
+    :param dump_type: dump command type
+    :rtype: str
+    :param dbdust_conf: config references for current dbdust process
+    :type dbdust_conf: dbdust.admin.DbDustConfig
+    :return: a named tuple of all settings for the dump operation
+    :rtype: collections.namedtuple
+    """
+    DumpConfig = collections.namedtuple('DumpConfig', 'type bin_path file_ext cli_func cli_conf')
+
+    dumper_config = dbdust.dumper.dumper_config.get(dump_type)
+
+    bin_name = dumper_config.get('bin_name')
+    file_ext = dumper_config.get('file_ext')
+    cli_func = dumper_config.get('cli_builder')
+    cli_conf = dict(dbdust_conf.items(dump_type))
+
+    bin_path = shutil.which(bin_name)
+    if bin_path is None:
+        current_dir_bin_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'bin', bin_name)
+        bin_path = current_dir_bin_path if os.path.exists(current_dir_bin_path) else None
+    if bin_path is None:
+        raise Exception('{} not found on the system'.format(bin_name))
+    logger.debug('{} found at {}'.format(bin_name, bin_path))
+
+    return DumpConfig(type=dump_type, bin_path=bin_path, file_ext=file_ext, cli_func=cli_func,
+                      cli_conf=cli_conf)
+
+
+def get_storage_config(storage_type, dbdust_conf):
+    """ Get all settings for the storage operation
+
+    :param storage_type: storage command type
+    :rtype: str
+    :param dbdust_conf: config references for current dbdust process
+    :type dbdust_conf: dbdust.admin.DbDustConfig
+    :return: a named tuple of all settings for the storage operation
+    :rtype: collections.namedtuple
+    """
+    StorageConfig = collections.namedtuple('StorageConfig', 'type file_prefix date_format retain_conf impl_conf')
+
+    file_prefix = dbdust_conf.get('general', 'file_prefix', fallback="backup-")
+    date_format = dbdust_conf.get('general', 'date_format', fallback="%Y%m%d%H%M%S")
+    daily_retain = int(dbdust_conf.get('general', 'daily', fallback=7))
+    weekly_retain = int(dbdust_conf.get('general', 'weekly', fallback=4))
+    monthly_retain = int(dbdust_conf.get('general', 'monthly', fallback=2))
+    max_per_day = int(dbdust_conf.get('general', 'max', fallback=1))
+    impl_conf = dict(dbdust_conf.items(storage_type))
+
+    return StorageConfig(type=storage_type, file_prefix=file_prefix, date_format=date_format, impl_conf=impl_conf,
+                         retain_conf={'daily_retain': daily_retain, 'weekly_retain': weekly_retain,
+                                      'monthly_retain': monthly_retain, 'max_per_day': max_per_day})
+
+
+class DbDustBackupHandler(object):
+    """ Backup handler :
+    - execute backup cli and store result in tmp folder
+    - save the new backup in storage
+    - cleanup storage by rotating old backups
+
+    :param logger_: main program logger
+    :type logger_: logging.Logger
+    :param dump_conf : a named tuple of all settings for the dump operation
+    :type dump_conf: collections.namedtuple
+    :param storage_conf : a named tuple of all settings for the storage operation
+    :type storage_conf: collections.namedtuple
+    """
+    def __init__(self, logger_, dump_conf, storage_conf):
+        self.logger = logger_
+        self.dump_conf = dump_conf
+        self.storage_conf = storage_conf
+
+        storage_impl = dbdust.storage.StorageFactory.create(logger, storage_conf.type, **storage_conf.impl_conf)
+        self.storage_handler = dbdust.storage.StorageHandler(storage_impl, storage_conf.file_prefix,
+                                                             storage_conf.date_format, **storage_conf.retain_conf)
+
+        now = datetime.datetime.utcnow()
+        self.file_name = "{}{}.{}".format(self.storage_conf.file_prefix,
+                                          now.strftime(self.storage_conf.date_format),
+                                          self.dump_conf.file_ext)
+
+    def process(self, tmp_dir):
+        """ Execute the backup and store tasks
+
+        :param tmp_dir: the directory where the temporary dump will be stored
+        :type tmp_dir: str
+        """
+
+        with tempfile.TemporaryDirectory(None, 'dbdust-', tmp_dir) as tmpdir_name:
+            tmp_file = os.path.join(tmpdir_name, self.file_name)
+            self.logger.info('backup temporary stored at {}'.format(tmp_file))
+
+            self._dump(tmp_file)
+            self._save(tmp_file)
+
+    def _dump(self, tmp_file):
+        """ Execute the dump/backup task in the temporary file
+
+        .. note:: the dump task must return a single file
+
+        :param tmp_file: temp file absolute path
+        :type tmp_file: str
+        """
+        dump_cli = self.dump_conf.cli_func(self.dump_conf.bin_path, tmp_file, **self.dump_conf.cli_conf)
+        self.logger.debug('command : {}'.format(' '.join(dump_cli)))
+
+        start_date = datetime.datetime.utcnow()
+        dump_result = subprocess.run(dump_cli, stdin=sys.stdin, stdout=sys.stdout)
+        if dump_result.returncode != 0:
+            raise Exception('dump command exited with error code {}'.format(dump_result.returncode))
+        end_date = datetime.datetime.utcnow()
+
+        self.logger.info('dump command executed successfully')
+        self.logger.debug('dump file size is {} bytes'.format(os.path.getsize(tmp_file)))
+        self.logger.debug('dump executed in {} seconds'.format((end_date - start_date).total_seconds()))
+
+    def _save(self, tmp_file):
+        """ Execute the storage task (store and rotate)
+
+        :param tmp_file: temp file absolute path
+        :type tmp_file: str
+        """
+        self.storage_handler.save(tmp_file)
+        self.logger.info('file {} saved to storage successfully'.format(self.file_name))
+        self.storage_handler.rotate()
+        self.logger.info('rotation done successfully')
+
+
 def run(*args, **kwargs):
     """ Called by console_scripts `dbdust` to launch the workers
 
@@ -105,74 +236,33 @@ def run(*args, **kwargs):
     args = create_cmd_line_parser().parse_args()
     conf = DbDustConfig(args.config_file)
     exit_code = 0
-    now = datetime.datetime.utcnow()
 
     logger.info('start')
 
     try:
+
         dump_type = conf.get('general', 'database')
         if dump_type not in dbdust.dumper.dumper_config:
             raise Exception('{} database not supported'.format(dump_type))
-
-        dump_conf = dict(conf.items(dump_type))
 
         storage_type = conf.get('general', 'storage')
         if storage_type not in dbdust.storage.StorageFactory.storage_list:
             raise Exception('{} storage not supported'.format(storage_type))
 
+        dump_conf = get_dump_config(dump_type, conf)
+        storage_conf = get_storage_config(storage_type, conf)
         tmp_dir = conf.get('general', 'tmp_dir', fallback=tempfile.gettempdir())
-        file_prefix = conf.get('general', 'file_prefix', fallback="backup-")
-        date_format = conf.get('general', 'date_format', fallback="%Y%m%d%H%M%S")
-        daily_retain = int(conf.get('general', 'daily', fallback=7))
-        weekly_retain = int(conf.get('general', 'weekly', fallback=4))
-        monthly_retain = int(conf.get('general', 'monthly', fallback=2))
-        max_per_day = int(conf.get('general', 'max', fallback=1))
-        storage_conf = dict(conf.items(storage_type))
 
-        storage_impl = dbdust.storage.StorageFactory.create(logger, storage_type, **storage_conf)
-        storage_handler = dbdust.storage.StorageHandler(storage_impl, file_prefix, date_format, daily_retain,
-                                                        weekly_retain, monthly_retain, max_per_day)
+        backup_handler = DbDustBackupHandler(logger, dump_conf, storage_conf)
+        backup_handler.process(tmp_dir)
 
-        dumper_config = dbdust.dumper.dumper_config.get(dump_type)
-        dumper_bin_name = dumper_config.get('bin_name')
-        dumper_file_ext = dumper_config.get('file_ext')
-        dumper_cli_func = dumper_config.get('cli_builder')
-
-        dump_bin_path = shutil.which(dumper_bin_name)
-        if dump_bin_path is None:
-            current_dir_bin_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'bin', dumper_bin_name)
-            dump_bin_path = current_dir_bin_path if os.path.exists(current_dir_bin_path) else None
-        if dump_bin_path is None:
-            raise Exception('{} not found on the system'.format(dumper_bin_name))
-        logger.debug('{} found at {}'.format(dumper_bin_name, dump_bin_path))
-
-        file_name = "{}{}.{}".format(file_prefix, now.strftime(date_format), dumper_file_ext)
-
-        with tempfile.TemporaryDirectory(None, 'dbdust-', tmp_dir) as tmpdir_name:
-            tmp_file = os.path.join(tmpdir_name, file_name)
-            logger.debug('backup will be temporary stored at {}'.format(tmp_file))
-
-            dump_cli = dumper_cli_func(dump_bin_path, tmp_file, **dump_conf)
-            logger.debug('command : {}'.format(' '.join(dump_cli)))
-
-            dump_result = subprocess.run(dump_cli, stdin=sys.stdin, stdout=sys.stdout)
-            if dump_result.returncode != 0:
-                raise Exception('dump command exited with error code {}'.format(dump_result.returncode))
-
-            logger.debug('dump command executed successfully')
-            logger.debug('dump file size is {} Bytes'.format(os.path.getsize(tmp_file)))
-
-            storage_handler.save(tmp_file)
-            storage_handler.rotate()
     except ImportError as e:
-        print(str(e))
         logger.error("No handler to export database {}".format(dump_type))
         exit_code = 2
     except configparser.Error as e:
         logger.error("configuration error : {}".format(str(e)))
         exit_code = 2
     except Exception as e:
-        print(type(e))
         logger.error(str(e))
         traceback.print_exc()
         exit_code = 1
