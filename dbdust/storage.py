@@ -12,6 +12,8 @@
 import datetime
 import os
 
+from azure.storage.blob import BlockBlobService
+
 
 class StorageHandler(object):
     """ Implements the logic of storage rotation
@@ -137,6 +139,48 @@ class BaseStorage(object):
 class AzureBlocStorage(BaseStorage, metaclass=StorageFactory):
     storage_type = 'azure_blob'
 
+    def __init__(self, logger, account_name, container, account_key=None, account_sas=None):
+        if account_key is not None:
+            account_auth = {'account_key': account_key}
+        elif account_sas is not None:
+            account_auth = {'account_sas': account_sas}
+        else:
+            raise DbDustStorageException('azure_blob storage : one account_key or account_sas needed')
+
+        self.service = BlockBlobService(account_name=account_name, **account_auth)
+        if not self.service.exists(container):
+            raise DbDustStorageException('azure_blob storage : {} container does not exist'.format(container))
+
+        self.container = container
+        self.logger = logger
+
+    def store(self, file_path):
+        """ Move local temp file to azure blob container
+
+        :param file_path: file to move
+        :type file_path: str
+        """
+        file_name = os.path.basename(file_path)
+        self.service.create_blob_from_path(self.container, file_name, file_path)
+        self.logger.debug('azure_blob storage : backup stored to {} - {}'.format(self.container, file_name))
+
+    def list(self):
+        """ List all files available in azure blob container
+
+        :return: list of dict. Each dict has an id (used to reference the file later), a file_name
+        :type: dict[]
+        """
+        return [{'id': item.name, 'file_name': item.name} for item in self.service.list_blobs(self.container)]
+
+    def delete(self, item_id):
+        """ Delete a file by its id in this storage
+
+        :param item_id: in case of the local storage, it is the file name
+        :type item_id: str
+        """
+        self.service.delete_blob(self.container, item_id)
+        self.logger.debug('azure_blob storage : removed {} - {}'.format(self.container, item_id))
+
 
 class LocalStorage(BaseStorage, metaclass=StorageFactory):
     """ Local filesystem storage implementation
@@ -150,9 +194,9 @@ class LocalStorage(BaseStorage, metaclass=StorageFactory):
 
     def __init__(self, logger, path, *args, **kwargs):
         if not os.path.isdir(path):
-            raise DbDustStorageException('{} folder does not exist'.format(path))
+            raise DbDustStorageException('local storage : {} folder does not exist'.format(path))
         if not os.access(path, os.W_OK | os.X_OK):
-            raise DbDustStorageException('{} folder is not writable'.format(path))
+            raise DbDustStorageException('local storage : {} folder is not writable'.format(path))
         self.local_path = os.path.abspath(path)
         logger.debug('local storage : backup will be stored at {}'.format(self.local_path))
         self.logger = logger

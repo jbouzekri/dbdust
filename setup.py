@@ -16,6 +16,7 @@ setup(
     url="http://github.com/3slab/dbdust",
     packages=find_packages(exclude=["*.test", "*.test.*", "test.*", "test"]),
     long_description=read('README.md'),
+    requires=['azure-storage-blob'],
     extras_require={
         'test': ['pytest', 'flake8', 'mock']
     },
