@@ -199,18 +199,19 @@ class DbDustBackupHandler(object):
             tmp_file = os.path.join(tmpdir_name, self.file_name)
             self.logger.info('backup temporary stored at {}'.format(tmp_file))
 
-            self._dump(tmp_file)
+            self._dump(tmp_dir, tmp_file)
             self._save(tmp_file)
 
-    def _dump(self, tmp_file):
+    def _dump(self, tmp_dir, tmp_file):
         """ Execute the dump/backup task in the temporary file
 
         .. note:: the dump task must return a single file
 
+        :param tmp_dir: temp dir absolute path
         :param tmp_file: temp file absolute path
         :type tmp_file: str
         """
-        dump_cli = self.dump_conf.cli_func(self.dump_conf.bin_path, self.dump_conf.zip_path, tmp_file,
+        dump_cli = self.dump_conf.cli_func(self.dump_conf.bin_path, self.dump_conf.zip_path, tmp_dir, tmp_file,
                                            **self.dump_conf.cli_conf)
         dump_cmd = ' '.join(dump_cli)
         self.logger.debug('command : {}'.format(dump_cmd))

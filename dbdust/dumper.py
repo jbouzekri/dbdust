@@ -9,19 +9,21 @@
 
 """ Cli and config for all supported source systems """
 
+import functools
+
 
 class DbDustDumpException(Exception):
     """ Base exception for all dump exception """
     pass
 
 
-def mongo_cli_builder(bin_path, zip_path, dump_path, uri=None, password=None):
+def mongo_cli_builder(bin_path, zip_path, dump_dir_path, dump_file_path, uri=None, password=None):
     """ dbust cli for mongodump """
     pass
 
 
-def mysql_cli_builder(bin_path, zip_path, dump_path, host=None, port=None, username=None, password=None, database=None,
-                      all_databases=None, zipped=None):
+def mysql_cli_builder(bin_path, zip_path, dump_dir_path, dump_file_path, host=None, port=None, username=None,
+                      password=None, database=None, all_databases=None, zipped=None):
     """ dbust cli for mysqldump """
     if all([database, all_databases]):
         raise DbDustDumpException('mysql dump : you must not set both database and all_databases')
@@ -40,19 +42,20 @@ def mysql_cli_builder(bin_path, zip_path, dump_path, host=None, port=None, usern
         cmd.append('--all-databases')
     if zipped:
         cmd.extend(['|', zip_path])
-    cmd.extend(['>', dump_path])
+    cmd.extend(['>', dump_file_path])
     return cmd
 
 
 def zipped_mysql_cli_builder(zipped=None):
-    def func(*args, **kwargs):
+    @functools.wraps(mysql_cli_builder)
+    def wrapper(*args, **kwargs):
         return mysql_cli_builder(*args, zipped=zipped, **kwargs)
-    return func
+    return wrapper
 
 
-def dbdust_tester_cli_builder(bin_path, zip_path, dump_path, loop='default', sleep=0, exit_code=0):
+def dbdust_tester_cli_builder(bin_path, zip_path, dump_dir_path, dump_file_path, loop='default', sleep=0, exit_code=0):
     """ dbust cli tester script included in this package """
-    return [bin_path, dump_path, loop, sleep, exit_code]
+    return [bin_path, dump_file_path, loop, sleep, exit_code]
 
 
 #: dict off all items mandatory for dbdust main process
