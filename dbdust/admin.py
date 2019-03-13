@@ -108,12 +108,13 @@ def get_dump_config(dump_type, dbdust_conf):
     :return: a named tuple of all settings for the dump operation
     :rtype: collections.namedtuple
     """
-    DumpConfig = collections.namedtuple('DumpConfig', 'type bin_path file_ext cli_func cli_conf')
+    DumpConfig = collections.namedtuple('DumpConfig', 'type bin_path file_ext cli_func cli_conf zip_path')
 
     dumper_config = dbdust.dumper.dumper_config.get(dump_type)
 
     bin_name = dumper_config.get('bin_name')
     file_ext = dumper_config.get('file_ext')
+    zip_name = dumper_config.get('zip_name')
     cli_func = dumper_config.get('cli_builder')
     cli_conf = dict(dbdust_conf.items(dump_type))
 
@@ -125,8 +126,14 @@ def get_dump_config(dump_type, dbdust_conf):
         raise Exception('{} not found on the system'.format(bin_name))
     logger.debug('{} found at {}'.format(bin_name, bin_path))
 
+    zip_path = None
+    if zip_name is not None:
+        zip_path = shutil.which(zip_name)
+        if zip_path is None:
+            raise Exception('{} not found on the system'.format(zip_name))
+
     return DumpConfig(type=dump_type, bin_path=bin_path, file_ext=file_ext, cli_func=cli_func,
-                      cli_conf=cli_conf)
+                      cli_conf=cli_conf, zip_path=zip_path)
 
 
 def get_storage_config(storage_type, dbdust_conf):
@@ -203,11 +210,13 @@ class DbDustBackupHandler(object):
         :param tmp_file: temp file absolute path
         :type tmp_file: str
         """
-        dump_cli = self.dump_conf.cli_func(self.dump_conf.bin_path, tmp_file, **self.dump_conf.cli_conf)
-        self.logger.debug('command : {}'.format(' '.join(dump_cli)))
+        dump_cli = self.dump_conf.cli_func(self.dump_conf.bin_path, self.dump_conf.zip_path, tmp_file,
+                                           **self.dump_conf.cli_conf)
+        dump_cmd = ' '.join(dump_cli)
+        self.logger.debug('command : {}'.format(dump_cmd))
 
         start_date = datetime.datetime.utcnow()
-        dump_result = subprocess.run(dump_cli, stdin=sys.stdin, stdout=sys.stdout)
+        dump_result = subprocess.run(dump_cmd, stdin=sys.stdin, stdout=sys.stdout, shell=True)
         if dump_result.returncode != 0:
             raise Exception('dump command exited with error code {}'.format(dump_result.returncode))
         end_date = datetime.datetime.utcnow()
