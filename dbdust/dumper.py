@@ -17,9 +17,33 @@ class DbDustDumpException(Exception):
     pass
 
 
-def mongo_cli_builder(bin_path, zip_path, dump_dir_path, dump_file_path, uri=None, password=None):
+def mongo_cli_builder(bin_path, zip_path, dump_dir_path, dump_file_path, uri=None, host=None, port=None,
+                      database=None, username=None, password=None, authentication_database=None,
+                      authentication_mechanism=None, collection=None):
     """ dbust cli for mongodump """
-    pass
+    if uri and any([host, port, database, username, password, authentication_database, authentication_mechanism]):
+        raise DbDustDumpException('mongo dump : when specifying uri, don\'t set other connection settings')
+    cmd = [bin_path]
+    if uri:
+        cmd.extend(['--uri', uri])
+    if host:
+        cmd.extend(['--host', host])
+    if port:
+        cmd.extend(['--port', port])
+    if username:
+        cmd.extend(['--username', username])
+    if password:
+        cmd.extend(['--password', password])
+    if authentication_database:
+        cmd.extend(['--authenticationDatabase', authentication_database])
+    if authentication_mechanism:
+        cmd.extend(['--authenticationMechanism', authentication_mechanism])
+    if database:
+        cmd.extend(['--db', database])
+    if collection:
+        cmd.extend(['--collection', collection])
+    cmd.extend(['--gzip', '--archive={}'.format(dump_file_path)])
+    return cmd
 
 
 def mysql_cli_builder(bin_path, zip_path, dump_dir_path, dump_file_path, host=None, port=None, username=None,
