@@ -18,7 +18,7 @@ setup(
     long_description=read('README.md'),
     install_requires=('azure-storage-blob',),
     extras_require={
-        'test': ['pytest', 'flake8', 'mock']
+        'test': ['pytest', 'flake8']
     },
     classifiers=[
         'Development Status :: 5 - Production/Stable',

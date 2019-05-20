@@ -1,9 +1,8 @@
 import argparse
 import datetime
-import os
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import dbdust.admin as admin
 import dbdust.dumper as dumper
@@ -105,17 +104,18 @@ def test_dbdustconfig_from_file_overwrite_env(monkeypatch, tmpdir):
                                      'source': {'other_var1': 'test1',
                                                 'other_var2': 'test2'}}
 
+
 @pytest.fixture
 def dbdust_config_tester(tmpdir):
     tmp_config_file = tmpdir.mkdir("dbdust").join("config.cfg")
     tmp_config_file.write("""[dbdust_tester.sh]
         host=value1
         port=value2
-        
+
         [dbdust_tester_unknown.sh]
         host=value1
         port=value2
-        
+
         [local]
         path = value3
         remote = no
@@ -134,11 +134,11 @@ def dbdust_config_full_tester(tmpdir):
         weekly=6
         monthly=7
         max=8
-        
+
         [dbdust_tester.sh]
         host=value1
         port=value2
-        
+
         [local]
         path = {}
         remote = no
@@ -206,17 +206,13 @@ def test_dbdusthandler_process(dbdust_config_full_tester, tmpdir, monkeypatch):
 
     handler.process(dbdust_tmp_dir)
 
-    handler._dump.assert_called_once()
+    assert handler._dump.call_count == 1
     dump_call_args = handler._dump.call_args
     assert dump_call_args[0][0] == dbdust_tmp_dir
     assert dump_call_args[0][1].endswith('dump-{}.txt'.format(now.strftime('%Y%m')))
-    handler._save.assert_called_once()
+    assert handler._save.call_count == 1
     save_call_args = handler._save.call_args
     assert save_call_args[0][0].endswith('dump-{}.txt'.format(now.strftime('%Y%m')))
-
-
-def test_dbdusthandler_dump():
-    pass
 
 
 def test_dbdusthandler_save(dbdust_config_full_tester):
