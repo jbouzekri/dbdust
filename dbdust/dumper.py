@@ -70,10 +70,10 @@ def mysql_cli_builder(bin_path, zip_path, dump_dir_path, dump_file_path, host=No
     return cmd
 
 
-def zipped_mysql_cli_builder(zipped=None):
+def zipped_mysql_cli_builder():
     @functools.wraps(mysql_cli_builder)
     def wrapper(*args, **kwargs):
-        return mysql_cli_builder(*args, zipped=zipped, **kwargs)
+        return mysql_cli_builder(*args, zipped=True, **kwargs)
     return wrapper
 
 
@@ -100,13 +100,13 @@ dumper_config = {
         "bin_name": "mysqldump",
         "zip_name": "gzip",
         "file_ext": "sql.gz",
-        "cli_builder": zipped_mysql_cli_builder(zipped=True)
+        "cli_builder": zipped_mysql_cli_builder()
     },
     "mysql_bz2": {
         "bin_name": "mysqldump",
         "zip_name": "bzip2",
         "file_ext": "sql.bz2",
-        "cli_builder": zipped_mysql_cli_builder(zipped=True)
+        "cli_builder": zipped_mysql_cli_builder()
     },
     "mongo": {
         "bin_name": "mongodump",
