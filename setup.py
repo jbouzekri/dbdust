@@ -16,9 +16,9 @@ setup(
     url="https://github.com/3slab/dbdust",
     packages=find_packages(exclude=["*.test", "*.test.*", "test.*", "test"]),
     long_description=read('README.md'),
-    install_requires=('azure-storage-blob',),
+    install_requires=('azure-storage-blob', 'python-dateutil',),
     extras_require={
-        'test': ['pytest', 'flake8']
+        'test': ['pytest', 'flake8', 'freezegun']
     },
     classifiers=[
         'Development Status :: 5 - Production/Stable',

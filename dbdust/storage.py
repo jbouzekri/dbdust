@@ -13,6 +13,7 @@ import datetime
 import os
 
 from azure.storage.blob import BlockBlobService
+from dateutil.relativedelta import relativedelta
 
 
 class StorageHandler(object):
@@ -64,8 +65,7 @@ class StorageHandler(object):
         for i in range(0, weekly):
             days_to_keep[first_day_week - datetime.timedelta(days=i*7)] = 0
         for i in range(0, monthly):
-            month_nb = ((first_day_month.month - i) + 12) % 12 or 12
-            days_to_keep[first_day_month.replace(month=month_nb)] = 0
+            days_to_keep[first_day_month - relativedelta(months=i)] = 0
         return days_to_keep
 
     def _get_sorted_backup_files_list(self):

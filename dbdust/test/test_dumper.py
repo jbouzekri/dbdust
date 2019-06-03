@@ -114,3 +114,9 @@ def test_zipped_mysql_cli_builder_results(host, port, username, password, databa
                                                     port=port, database=database, username=username,
                                                     password=password, all_databases=all_databases)
     assert ' '.join(exec_result) == result
+
+
+def test_dumper_config():
+    for config_key, config_dict in dumper.dumper_config.items():
+        if not all(k in config_dict for k in ("bin_name", "zip_name", "file_ext", "cli_builder")):
+            pytest.fail('key {} is missing dumper config'.format(config_key))
