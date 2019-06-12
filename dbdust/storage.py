@@ -90,8 +90,9 @@ class StorageHandler(object):
         backup_list = self._get_sorted_backup_files_list()
         for item in backup_list:
             item_date = item['date'].date()
-            self.days_to_keep[item_date] += 1
-            if self.days_to_keep[item_date] > self.max_per_day:
+            if item_date in self.days_to_keep:
+                self.days_to_keep[item_date] += 1
+            if item_date not in self.days_to_keep or self.days_to_keep[item_date] > self.max_per_day:
                 self.storage_impl.delete(item['id'])
 
     def extract_date_from_file_name(self, file_name):
