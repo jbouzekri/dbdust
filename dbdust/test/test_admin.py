@@ -38,6 +38,15 @@ def test_create_cmd_line_parser_with_config_file(tmpdir):
     args = parser.parse_args(['-c', '{}'.format(tmp_config_file)])
 
     assert args.config_file == str(tmp_config_file)
+    assert args.verbose is False
+
+
+def test_create_cmd_line_parser_with_verbose():
+    parser = admin.create_cmd_line_parser()
+    args = parser.parse_args(['-v'])
+
+    assert args.config_file is None
+    assert args.verbose is True
 
 
 def test_dbdustconfig_get_default_from_env_no_env(monkeypatch):

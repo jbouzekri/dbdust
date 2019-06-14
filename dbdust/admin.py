@@ -29,7 +29,6 @@ formatter = logging.Formatter(fmt="%(asctime)s - %(levelname)s - %(message)s")
 handler = logging.StreamHandler()
 handler.setFormatter(formatter)
 logger.addHandler(handler)
-logger.setLevel(logging.DEBUG)
 
 
 def validate_config_file(config_file):
@@ -54,6 +53,8 @@ def create_cmd_line_parser():
                                                  'backup and clean old ones')
     parser.add_argument('-c', '--config', type=validate_config_file, dest='config_file',
                         help='config file, if not read config from environment')
+    parser.add_argument('-v ', '--verbose', dest='verbose', help="increase output verbosity",
+                        action="store_true")
     return parser
 
 
@@ -244,7 +245,14 @@ def run(*args, **kwargs):
     Usage : `dbdust -c config.cfg`
     """
     args = create_cmd_line_parser().parse_args()
+
+    if args.verbose:
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
+
     conf = DbDustConfig(args.config_file)
+
     exit_code = 0
 
     logger.info('start')
@@ -271,7 +279,8 @@ def run(*args, **kwargs):
         exit_code = 2
     except Exception as e:
         logger.error(str(e))
-        traceback.print_exc()
+        if args.verbose:
+            traceback.print_exc()
         exit_code = 1
 
     logger.info('end')
