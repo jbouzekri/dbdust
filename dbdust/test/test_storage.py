@@ -1,4 +1,6 @@
 import datetime
+import logging
+import os
 from unittest.mock import Mock
 
 import pytest
@@ -111,3 +113,51 @@ def test_storage_handler_rotate(monkeypatch):
 
     assert mock_storage_impl.delete.call_count == 3
     assert mock_storage_impl.delete.call_args_list == [((20,),), ((40,),), ((60,),)]
+
+
+def test_local_storage__init__folder_does_not_exists():
+    with pytest.raises(storage.DbDustStorageException) as excinfo:
+        storage.LocalStorage(logging.getLogger(), 'dbdust_pathdoesnotexists')
+    assert 'local storage : dbdust_pathdoesnotexists folder does not exist' == str(excinfo.value)
+
+
+def test_local_storage_store(tmpdir):
+    local_path = tmpdir.mkdir("dbdust_localpath")
+    src_path = tmpdir.mkdir("dbdust_srcpath")
+    file_path = src_path.join('myfile.txt')
+    file_path.write('content')
+
+    local_storage = storage.LocalStorage(logging.getLogger(), str(local_path))
+    local_storage.store(str(file_path))
+
+    assert len(local_path.listdir()) == 1
+    assert str(local_path.listdir()[0]).endswith('myfile.txt') is True
+    assert len(src_path.listdir()) == 0
+
+
+def test_local_storage_list(tmpdir):
+    local_path = tmpdir.mkdir("dbdust_localpath")
+
+    file_path1 = local_path.join('myfile1.txt')
+    file_path1.write('content')
+    file_path2 = local_path.join('myfile2.txt')
+    file_path2.write('content')
+
+    local_storage = storage.LocalStorage(logging.getLogger(), str(local_path))
+    result = local_storage.list()
+
+    assert result == [{'path': os.path.join(str(local_path), 'myfile2.txt'),
+                       'file_name': 'myfile2.txt', 'id': 'myfile2.txt'},
+                      {'path': os.path.join(str(local_path), 'myfile1.txt'),
+                       'file_name': 'myfile1.txt', 'id': 'myfile1.txt'}]
+
+
+def test_local_storage_delete(tmpdir):
+    local_path = tmpdir.mkdir("dbdust_localpath")
+    file_path1 = local_path.join('myfile1.txt')
+    file_path1.write('content')
+
+    assert len(local_path.listdir()) == 1
+    local_storage = storage.LocalStorage(logging.getLogger(), str(local_path))
+    local_storage.delete('myfile1.txt')
+    assert len(local_path.listdir()) == 0
